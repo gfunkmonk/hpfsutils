@@ -637,7 +637,6 @@ static void hpfs_add_dirent_internal(struct hpfs_dirblk* dirblk, struct hpfs_dir
         // Determine the positions and addresses of our new dirblks
         struct hpfs_dirblk *left = hpfs_new_dirblk(new_parent_lba),
                            *right = is_top ? hpfs_new_dirblk(new_parent_lba) : dirblk;
-        (void)left; (void)right; // Used in complex logic below
 
         //printf("Splitting dirblk! (%d - lsn: %x) top? %d\n", dirblk->first_free, dirblk->this_lba, is_top);
         struct hpfs_dirent* median;
