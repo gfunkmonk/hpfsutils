@@ -1,5 +1,4 @@
 // Inspects and dumps everything about a HPFS partition
-#include <alloca.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -248,11 +247,11 @@ static uint32_t partition_base = 0;
 
 int main(int argc, char** argv)
 {
-    int is_part_image = 0, paged = 0;
+    int paged = 0;
     char* img = NULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-i")) {
-            is_part_image = 1;
+            // partition image flag (unused, kept for compatibility)
         } else if (!strcmp(argv[i], "-p")) {
             paged = 1;
         } else if (!strcmp(argv[i], "-o")) {
@@ -449,19 +448,24 @@ int main(int argc, char** argv)
             fprintf(stderr, "Too many spare dirblks (max spare_dirblks_count: %d)\n", (secsize - 0x6C) >> 2);
         else {
             int bytes = spareblock.spare_dirblks_count << 2;
-            uint32_t* dirblks = alloca(bytes);
-            _pread(fd, dirblks, bytes, 17 * secsize + 0x6C);
-            printf("Spare dirblk list:");
-            unsigned int i = 0;
-            while (i < spareblock.spare_dirblks_count) {
-                if ((i & 7) == 0) // Create newline every eighth element, and first one too
-                    printf("\n  0x%08x", dirblks[i]);
-                else
-                    printf(", 0x%08x", dirblks[i]);
-                i++;
+            uint32_t* dirblks = malloc(bytes);
+            if (!dirblks) {
+                fprintf(stderr, "Memory allocation failed\n");
+            } else {
+                _pread(fd, dirblks, bytes, 17 * secsize + 0x6C);
+                printf("Spare dirblk list:");
+                unsigned int i = 0;
+                while (i < spareblock.spare_dirblks_count) {
+                    if ((i & 7) == 0) // Create newline every eighth element, and first one too
+                        printf("\n  0x%08x", dirblks[i]);
+                    else
+                        printf(", 0x%08x", dirblks[i]);
+                    i++;
+                }
+                printf("\n\n\n");
+                free(dirblks);
+                pagewait(paged);
             }
-            printf("\n\n\n");
-            pagewait(paged);
         }
     }
 

@@ -1,4 +1,3 @@
-#include <alloca.h>
 #include <dirent.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -35,10 +34,12 @@ static void read_sector(int fd, void* data, int sec)
 {
     _pread(fd, data, 512, (sec + partition_base) << 9);
 }
+#if 0 // Reserved for debugging
 static void read_sector2(int fd, void* data, int sec)
 {
     _pread(fd, data, 512, sec << 9);
 }
+#endif
 static void read_sectors(int fd, void* data, int secs, int sec)
 {
     _pread(fd, data, 512 * secs, (sec + partition_base) << 9);
@@ -62,6 +63,7 @@ static void write_sectors(int fd, void* data, int secs, int sec)
     _pwrite(fd, data, 512 * secs, (sec + partition_base) << 9);
 }
 
+#if 0 // Reserved for debugging
 static void print_dirent_name(struct hpfs_dirent* de)
 {
     if (de->namelen == 2) {
@@ -79,6 +81,7 @@ static void print_dirent_name(struct hpfs_dirent* de)
         fprintf(stderr, "%c", de->name_stuff[i]);
     fprintf(stderr, "\n");
 }
+
 static void print_fnode_name(struct hpfs_fnode* fn)
 {
     unsigned int l = 15;
@@ -106,6 +109,7 @@ static void print_dirblk(struct hpfs_dirblk* db)
     }
     printf("Computed length: %d Actual length: %d\n", offset, db->first_free);
 }
+#endif
 
 // Sort of like strcmp, but stricter
 // Returns:
@@ -113,7 +117,7 @@ static void print_dirblk(struct hpfs_dirblk* db)
 //  >0 if x comes before y
 //  <0 if y comes before x
 // DO NOT assume anything else about these values but their signs and whether they're zero or not.
-static int fncompare(char* x, int xlen, char* y, int ylen, int casesens)
+static int fncompare(uint8_t* x, int xlen, uint8_t* y, int ylen, int casesens)
 {
     while (1) {
         if ((xlen | ylen) == 0) // End of both strings, all equal so far
@@ -225,7 +229,7 @@ static uint32_t find_extent(uint32_t secs)
 // Strictly speaking, using the dirband is optional, but HPFS would like us to use it.
 static uint32_t alloc_dirband_sectors(int count)
 {
-    if ((dirband_sectors_used + count) >= superblock->dir_band_sectors)
+    if ((uint32_t)(dirband_sectors_used + count) >= superblock->dir_band_sectors)
         return alloc_sectors(count);
 
     int dirband_base = superblock->dir_band_start_sec;
@@ -271,7 +275,7 @@ struct ht_entry {
 #define HASHTABLE_ENTRIES (1024)
 static inline uint32_t hash_value(uint32_t key)
 {
-    return (key << 3 + key >> 2 + key) & (HASHTABLE_ENTRIES - 1); // random hash idea idk
+    return ((key << 3) + (key >> 2) + key) & (HASHTABLE_ENTRIES - 1); // random hash idea idk
 }
 static struct ht_entry* ht;
 static void ht_init(void)
@@ -326,7 +330,7 @@ static void* ht_get(uint32_t sector, int type)
         }
     }
     // linked list time
-    struct ht_entry *hte = &ht[hash], *next;
+    struct ht_entry *hte = &ht[hash];
     while (1) {
         if (hte->sector == sector) {
             // we have found an open spot
@@ -480,6 +484,7 @@ static struct hpfs_dirent* hpfs_add_dotdot(struct hpfs_dirent* de, uint32_t pare
     return ((void*)de) + de->size;
 }
 
+#if 0 // Reserved for debugging
 // Count number of dirents in dirblk. Doesn't include end block.
 static int hpfs_count_dirents(struct hpfs_dirblk* dirblk)
 {
@@ -501,6 +506,7 @@ static int hpfs_count_dirents(struct hpfs_dirblk* dirblk)
         }
     }
 }
+#endif
 
 #define DOFFS(dirblk, offs) (((void*)dirblk) + offs)
 #define DIRBLK_HDR_SIZE 0x14
@@ -559,6 +565,7 @@ static struct hpfs_dirblk* hpfs_get_dirblk(uint32_t lba)
     return elt;
 }
 
+#if 0 // Reserved for debugging
 // Determine the offset in dirblk->data of dirent number #offset
 // Also could be used to determine the size of #(offset - 1) dirents
 static int hpfs_offsetof_dirblk(struct hpfs_dirblk* dirblk, int offset)
@@ -577,6 +584,7 @@ static int hpfs_offsetof_dirblk(struct hpfs_dirblk* dirblk, int offset)
     }
     return offs;
 }
+#endif
 
 // Clear a dirblk and set "de" as the only directory entry.
 static void hpfs_dirblk_setonly(struct hpfs_dirblk* dirblk, struct hpfs_dirent* de, uint32_t downlink_de, uint32_t downlink_end)
@@ -628,8 +636,8 @@ static void hpfs_add_dirent_internal(struct hpfs_dirblk* dirblk, struct hpfs_dir
 
         // Determine the positions and addresses of our new dirblks
         struct hpfs_dirblk *left = hpfs_new_dirblk(new_parent_lba),
-                           *right = is_top ? hpfs_new_dirblk(new_parent_lba) : dirblk,
-                           *top = is_top ? dirblk : NULL;
+                           *right = is_top ? hpfs_new_dirblk(new_parent_lba) : dirblk;
+        (void)left; (void)right; // Used in complex logic below
 
         //printf("Splitting dirblk! (%d - lsn: %x) top? %d\n", dirblk->first_free, dirblk->this_lba, is_top);
         struct hpfs_dirent* median;
@@ -639,7 +647,7 @@ static void hpfs_add_dirent_internal(struct hpfs_dirblk* dirblk, struct hpfs_dir
             struct hpfs_dirent* de_mid = DOFFS(temp_dirblk, median_index);
             median = (struct hpfs_dirent*)&temp_dirblk->data[0];
             // Find the first block before the median.
-            int n = 0, k = 0;
+            int k = 0;
             while (median < de_mid) {
                 k += median->size;
                 median = hpfs_next_de(median);
@@ -648,8 +656,7 @@ static void hpfs_add_dirent_internal(struct hpfs_dirblk* dirblk, struct hpfs_dir
             // Copy the first blocks before the median into the left dirblk.
             // We preserve the header because we worked hard to make it!
             int leftlen = (uintptr_t)median - (uintptr_t)(&temp_dirblk->data[0]);
-            struct hpfs_dirent *leftent = (struct hpfs_dirent *)&left->data[0],
-                               *lefttemp;
+            struct hpfs_dirent *leftent = (struct hpfs_dirent *)&left->data[0];
             memcpy(leftent, &temp_dirblk->data[0], leftlen);
             leftent = DOFFS(leftent, leftlen);
 
@@ -697,10 +704,10 @@ static void hpfs_add_dirent_internal(struct hpfs_dirblk* dirblk, struct hpfs_dir
             }
         }
 
-        // sanity check
-        int right_ents = right->first_free - DIRBLK_HDR_SIZE;
-        int left_ents = left->first_free - DIRBLK_HDR_SIZE;
-        int temp_ents = temp_dirblk->first_free - DIRBLK_HDR_SIZE + 36 - de->size; // add an extra end entry
+        // sanity check (commented out to remove unused variables)
+        // int right_ents = right->first_free - DIRBLK_HDR_SIZE;
+        // int left_ents = left->first_free - DIRBLK_HDR_SIZE;
+        // int temp_ents = temp_dirblk->first_free - DIRBLK_HDR_SIZE + 36 - de->size; // add an extra end entry
         //printf("l=%d r=%d l+r=%d expected=%d\n", left_ents, right_ents, left_ents + right_ents, temp_ents);
 
         //printf("left=%d [%x] right=%d [%x] dirblk=%d [%x]\n", left->first_free, left->this_lba, right->first_free, right->this_lba, dirblk->first_free, dirblk->this_lba);
@@ -824,7 +831,6 @@ fail:
 }
 
 static struct hpfs_dirent* temp_addfiles_de;
-static char temp_path[4096];
 
 static void concatpath(char* dest, char* p1, int p1l, char* p2)
 {
@@ -854,7 +860,7 @@ static inline int is_longname(char* name)
 
     // COMMAND.COM --> "COM".length === 3
     int extlen = (uintptr_t)(name + len) - (uintptr_t)(dot + 1);
-    if (pre_len > 3)
+    if (extlen > 3)
         return 1;
     return 0;
 }
@@ -1114,7 +1120,11 @@ static int add_host_dirent(struct hpfs_dirblk* dirblk, char* hostdir, struct dir
 {
     struct stat statbuf;
     int p1l, p2l;
-    char* npath = alloca((p1l = strlen(hostdir)) + 1 + (p2l = strlen(host_de->d_name)) + 1);
+    char* npath = malloc((p1l = strlen(hostdir)) + 1 + (p2l = strlen(host_de->d_name)) + 1);
+    if (!npath) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return -1;
+    }
     concatpath(npath, hostdir, p1l, host_de->d_name);
 
     if (p2l > 254) {
@@ -1122,8 +1132,10 @@ static int add_host_dirent(struct hpfs_dirblk* dirblk, char* hostdir, struct dir
         p2l = 254;
     }
 
-    if (stat(npath, &statbuf) < 0)
+    if (stat(npath, &statbuf) < 0) {
+        free(npath);
         return -1;
+    }
     uint8_t attr = stat2attr(&statbuf);
     if (is_longname(host_de->d_name))
         attr |= HPFS_DIRENT_ATTR_LONGNAME;
@@ -1214,6 +1226,8 @@ static int add_host_dirent(struct hpfs_dirblk* dirblk, char* hostdir, struct dir
             //abort();
         }
     }
+    free(npath);
+    return 0;
 }
 
 // Add references to files in host directory 'hostdir' into in-image 'dirblk'
@@ -1245,6 +1259,7 @@ static int add_host_files(struct hpfs_dirblk* dirblk, char* hostdir)
         add_host_dirent(dirblk, hostdir, entry);
     }
     closedir(dir);
+    return 0;
 }
 
 static void parse_partition(int partid)
