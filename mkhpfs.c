@@ -19,7 +19,7 @@ static struct hpfs_spareblock* spareblock;
 static uint32_t **blk_bitmaps, *bitmap_locations, *dirband_bitmap_data;
 static uint32_t dirband_sectors_used;
 static uint32_t NOW;
-static uint8_t casetbl[256];
+// static uint8_t casetbl[256]; // Reserved for future use
 
 enum {
     TYPE_DIRECTORY,
@@ -88,10 +88,12 @@ static void read_sector2(int fd, void* data, int sec)
 {
     _pread(fd, data, 512, sec << 9);
 }
+#if 0 // Reserved for future use
 static void read_sectors(int fd, void* data, int secs, int sec)
 {
     _pread(fd, data, 512 * secs, (sec + partition_base) << 9);
 }
+#endif
 static void _pwrite(int fd, void* data, int count, uint32_t offset)
 {
     if (offset != cseek)
@@ -140,11 +142,12 @@ static void install_boot_blk(char* img, char* oem, char* vollab)
       //  memset(&img, 0, 512);
 
     // Get image size to compute CHS. We only set this for BPB purposes -- all other accesses are done using LBA
-    uint32_t size = lseek(fd, 0, SEEK_END);
+    lseek(fd, 0, SEEK_END);
     lseek(fd, cseek, SEEK_SET);
 
     // XXX bad CHS algorithm
-    int heads = 16, spt = 63, cyls = (size >> 9) / (heads * spt);
+    int heads = 16, spt = 63;
+    (void)heads; (void)spt; // Unused but kept for future CHS implementation
 
     // These FAT fields aren't actually used for anything -- the Linux driver doesn't read them.
     // But these values were produced by the OS/2 format command, so here we go.
@@ -356,7 +359,7 @@ static struct hpfs_fnode* mk_fnode(char* name, uint32_t container_dir_lba, int i
     if (ndxstart < 0)
         ndxstart = 0;
     fnode->namelen = namelen;
-    strcpy(fnode->name15, &name[ndxstart]);
+    memcpy(fnode->name15, &name[ndxstart], namelen >= 15 ? 15 : namelen);
     fnode->container_dir_lba = container_dir_lba;
 
     // Ignore ACLs and EAs right now. We can add them later, if we want.
@@ -366,6 +369,7 @@ static struct hpfs_fnode* mk_fnode(char* name, uint32_t container_dir_lba, int i
 
     fnode->filelen = isdir ? 0 : length; // Directories have lengths of zero bytes.
     fnode->acl_ea_offset = 0xC4;
+    return fnode;
 }
 
 static int override_dirband = 0;
@@ -480,6 +484,7 @@ int main(int argc, char** argv)
             case 'd':
                 ARG();
                 system_root = arg;
+                (void)system_root; // Reserved for future use
                 break;
             case 'H':
                 ARG();
@@ -625,7 +630,6 @@ int main(int argc, char** argv)
         // Even bitmaps will have them at the beginning, odd bitmaps will have them at the end
         uint32_t bandid = i * (8 << 20) / 512;
         const uint32_t BAND_END_M4 = (8 << 20) / 512 - 4;
-        const uint32_t BAND_END = (8 << 20) / 512;
         if (i & 1) {
             // end
             bandid = bandid + BAND_END_M4;
