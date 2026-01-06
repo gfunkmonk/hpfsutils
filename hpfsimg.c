@@ -96,7 +96,7 @@ static void print_dirblk(struct hpfs_dirblk* db)
     int offset = 0x14, id = 0;
     struct hpfs_dirent* de = (struct hpfs_dirent*)&db->data[0];
     while (1) {
-        fprintf(stderr, "%d: [at=%d dl=%x] ", id++, offset, *(uint32_t*)(((void*)de) + de->size - 4));
+        fprintf(stderr, "%d: [at=%d dl=%x] ", id++, offset, *(uint32_t*)(((char*)de) + de->size - 4));
         print_dirent_name(de);
         offset += de->size;
         if (de->size == 0) {
@@ -105,7 +105,7 @@ static void print_dirblk(struct hpfs_dirblk* db)
         if (de->flags & HPFS_DIRENT_FLAGS_DUMMY_END) {
             break;
         }
-        de = ((void*)de) + de->size;
+        de = ((char*)de) + de->size;
     }
     printf("Computed length: %d Actual length: %d\n", offset, db->first_free);
 }
@@ -443,9 +443,9 @@ static struct hpfs_fnode* hpfs_new_fnode(uint32_t parent_lba, uint32_t* this_lba
 // Gets LBA for dirblk from FNODE
 #define FNODE_TO_DIRBLK_LBA(fn) (fn->btree_info_flag & 0x80) ? fn->alnodes[0].physical_lba : fn->alleafs[0].physical_lba
 // sets downlink
-#define SET_DOWNLINK(de, n) *(uint32_t*)(((void*)de) + de->size - 4) = n
+#define SET_DOWNLINK(de, n) *(uint32_t*)(((char*)de) + de->size - 4) = n
 // gets downlink
-#define GET_DOWNLINK(de) *(uint32_t*)(((void*)de) + de->size - 4)
+#define GET_DOWNLINK(de) *(uint32_t*)(((char*)de) + de->size - 4)
 // Get dirent data
 #define DE_DATA(de) ((struct hpfs_dirent*)(&de->data[0]))
 
@@ -465,7 +465,7 @@ static struct hpfs_dirent* hpfs_add_end(struct hpfs_dirent* de, uint32_t downlin
         de->flags = HPFS_DIRENT_FLAGS_DUMMY_END | HPFS_DIRENT_FLAGS_BTREE;
     else
         de->flags = HPFS_DIRENT_FLAGS_DUMMY_END;
-    return ((void*)de) + de->size;
+    return (struct hpfs_dirent*)(((char*)de) + de->size);
 }
 // Add '..' entry to file. Returns a pointer to the next entry.
 static struct hpfs_dirent* hpfs_add_dotdot(struct hpfs_dirent* de, uint32_t parent)
@@ -481,7 +481,7 @@ static struct hpfs_dirent* hpfs_add_dotdot(struct hpfs_dirent* de, uint32_t pare
     de->fnode_lba = parent;
     de->namelen = 2;
     de->name_stuff[0] = de->name_stuff[1] = 1;
-    return ((void*)de) + de->size;
+    return (struct hpfs_dirent*)(((char*)de) + de->size);
 }
 
 #if 0 // Reserved for debugging
@@ -508,7 +508,7 @@ static int hpfs_count_dirents(struct hpfs_dirblk* dirblk)
 }
 #endif
 
-#define DOFFS(dirblk, offs) (((void*)dirblk) + offs)
+#define DOFFS(dirblk, offs) ((struct hpfs_dirent*)(((char*)dirblk) + offs))
 #define DIRBLK_HDR_SIZE 0x14
 // Iterate through a dirblk
 #define DIRBLK_ITER(varn, dirblk)                                  \
@@ -521,7 +521,7 @@ static inline struct hpfs_dirent* hpfs_next_de(struct hpfs_dirent* dirent)
         fprintf(stderr, "dirent with size 0\n");
         abort();
     }
-    return ((void*)dirent) + dirent->size;
+    return (struct hpfs_dirent*)(((char*)dirent) + dirent->size);
 }
 
 // We know that there is enough room within dirblk to insert de.
@@ -544,9 +544,9 @@ static void hpfs_insert_dirblk_nosplit(struct hpfs_dirblk* dirblk, struct hpfs_d
             // Insert it here
             // Move the other ents back (note that these are most likely overlapping)
             int offset = (uintptr_t)cur - (uintptr_t)dirblk;
-            memmove(((void*)cur) + de->size, cur, dirblk->first_free - offset);
+            memmove((char*)cur + de->size, cur, dirblk->first_free - offset);
             // ... and insert ours here
-            memcpy((void*)cur, de, de->size);
+            memcpy(cur, de, de->size);
             // Update the size
             dirblk->first_free += de->size;
             return;
@@ -896,22 +896,23 @@ static struct hpfs_alsec* hpfs_new_alsec(int flags, uint32_t parent)
 static void hpfs_insert_al(void* area, struct hpfs_btree_header* hdr, void* elt)
 {
     int size = hdr->flag & HPFS_BTREE_ALNODES ? sizeof(struct hpfs_alnode) : sizeof(struct hpfs_alleaf);
+    char* area_ptr = (char*)area;
     for (int i = 0; i < hdr->used; i++) {
         // Compares alnode->end_sector_count or alleaf->logical_lba, both of which are at offset 0
-        if (*((uint32_t*)area) > *((uint32_t*)elt)) {
+        if (*((uint32_t*)area_ptr) > *((uint32_t*)elt)) {
             int bytes_to_move = (hdr->used - i) * size;
-            memmove(area + size, area, bytes_to_move);
+            memmove(area_ptr + size, area_ptr, bytes_to_move);
             // ... and insert ours here
-            memcpy(area, elt, size);
+            memcpy(area_ptr, elt, size);
             hdr->used++;
             hdr->free--;
             hdr->free_offset += size;
             return;
         }
-        area += size;
+        area_ptr += size;
     }
     // Insert it at the very end
-    memcpy(area, elt, size);
+    memcpy(area_ptr, elt, size);
     hdr->used++;
     hdr->free--;
     hdr->free_offset += size;
@@ -1029,7 +1030,7 @@ static int hpfs_insert_into_alsec(struct hpfs_alsec* alsec, void* elt, struct hp
     right->btree.used = other_half;
     hpfs_hdr_compute_free(&right->btree);
     // Starting at element `half`, copy `other_half` entries
-    memcpy(right->alleafs, ((void*)alleaf_temp) + half * size, other_half * size);
+    memcpy(right->alleafs, ((char*)alleaf_temp) + half * size, other_half * size);
 #if 0 // idea on how to do this without malloc
     if(right->LAST_ENTRY > aln) hpfs_insert_al(right->alleafs, &right->btree, aln);
 #endif

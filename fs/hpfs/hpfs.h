@@ -95,7 +95,7 @@ struct hpfs_spareblock {
     uint32_t superblock_crc32; // 0x28, unused except for HPFS386
     uint32_t spareblock_crc32; // 0x3C
     uint32_t extra[15]; // 0x40
-    uint32_t spare_dirblks[0]; // 0x6C, length is determined by spare_dirblks_count
+    uint32_t spare_dirblks[]; // 0x6C, length is determined by spare_dirblks_count
 } __attribute__((packed));
 
 struct hpfs_codepage_info_entry {
@@ -288,7 +288,7 @@ struct hpfs_dirent {
 #define HPFS_CP_DCBS_PRESENT 128
     uint8_t code_page_index; // 0x1D
     uint8_t namelen; // 0x1E
-    uint8_t name_stuff[0];
+    uint8_t name_stuff[];
 
     // After the name and ACLs, we need a down pointer to another dirent
 };
