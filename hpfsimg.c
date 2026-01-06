@@ -544,9 +544,9 @@ static void hpfs_insert_dirblk_nosplit(struct hpfs_dirblk* dirblk, struct hpfs_d
             // Insert it here
             // Move the other ents back (note that these are most likely overlapping)
             int offset = (uintptr_t)cur - (uintptr_t)dirblk;
-            memmove(((char*)cur) + de->size, cur, dirblk->first_free - offset);
+            memmove((char*)cur + de->size, cur, dirblk->first_free - offset);
             // ... and insert ours here
-            memcpy((char*)cur, de, de->size);
+            memcpy(cur, de, de->size);
             // Update the size
             dirblk->first_free += de->size;
             return;
